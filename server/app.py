@@ -53,27 +53,22 @@ def get_pizzas():
     pizzas = Pizza.query.all()
     return [pizza.to_dict(rules=['-restaurant_pizzas']) for pizza in pizzas], 200
 
-@app.route('/restaurant_pizzas', methods=['POST'])
-def create_restaurant_pizza():
+@app.route('/restaurant_pizzas', methods=['GET', 'POST'])
+def create_new_pizza():
+    
     json_data = request.get_json()
 
-    price = json_data.get('price')
-    pizza_id = json_data.get('pizza_id')
-    restaurant_id = json_data.get('restaurant_id')
+    try: 
+        new_restaurant_pizza = RestaurantPizza(
+            price=json_data.get('price'),
+            pizza_id=json_data.get('pizza_id'),
+            restaurant_id=json_data.get('restaurant_id')
+        )
+    except ValueError as e:
+        return {'errors': ['validation errors']}, 400
 
-    if not (1 <= price <= 30):
-        return {'errors': ['Validation error: price must be between 1 and 30']}, 400
-
-    pizza = Pizza.query.get(pizza_id)
-    restaurant = Restaurant.query.get(restaurant_id)
-
-    if not pizza or not restaurant:
-        return {'errors': ['Validation error: Invalid pizza_id or restaurant_id']}, 400
-
-    new_restaurant_pizza = RestaurantPizza(price=price, pizza_id=pizza_id, restaurant_id=restaurant_id)
     db.session.add(new_restaurant_pizza)
     db.session.commit()
-
     return new_restaurant_pizza.to_dict(), 201
 
 if __name__ == "__main__":
