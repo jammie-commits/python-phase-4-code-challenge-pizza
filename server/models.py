@@ -18,6 +18,12 @@ class Restaurant(db.Model, SerializerMixin):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String, nullable=False)
     address = db.Column(db.String, nullable=False)
+    restaurant_pizzas = db.relationship('RestaurantPizza', backref='restaurant')
+
+    def to_dict(self):
+        data = super().to_dict()
+        data.pop('restaurant_pizzas', None)
+        return data
 
     # Relationship with RestaurantPizza
     restaurant_pizzas = db.relationship(
@@ -38,6 +44,13 @@ class Pizza(db.Model, SerializerMixin):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String, nullable=False)
     ingredients = db.Column(db.String, nullable=False)
+
+    restaurant_pizzas = db.relationship('RestaurantPizza', backref='pizza')
+    
+    def to_dict(self):
+        data = super().to_dict()
+        data.pop('restaurant_pizzas', None)
+        return data
 
     # Relationship with RestaurantPizza
     restaurant_pizzas = db.relationship(
