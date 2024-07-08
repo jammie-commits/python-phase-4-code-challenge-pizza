@@ -1,74 +1,84 @@
-#!/usr/bin/env python3
-from models import db, Restaurant, RestaurantPizza, Pizza
+from flask import Flask, jsonify, request
 from flask_migrate import Migrate
-from flask import Flask, request, make_response, jsonify
+from models import db, Restaurant, Pizza, RestaurantPizza
 from flask_restful import Api, Resource
 import os
+from sqlalchemy.exc import IntegrityError
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DATABASE = os.environ.get("DB_URI", f"sqlite:///{os.path.join(BASE_DIR, 'app.db')}")
 
 app = Flask(__name__)
-app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.json.compact = False
-
-migrate = Migrate(app, db)
-
-db.init_app(app)
 
 api = Api(app)
 
+db.init_app(app)
+migrate = Migrate(app, db)
 
-@app.route("/")
-def index():
-    return "<h1>Code challenge</h1>"
 
-class RestaurantsResource(Resource):
-    def get(self):
-        restaurants = Restaurant.query.all()
-        return jsonify([restaurant.to_dict() for restaurant in restaurants])
+@app.route("/restaurants", methods=["GET"])
+def get_restaurants():
+    restaurants = Restaurant.query.all()
+    serialized_restaurants = [restaurant.to_dict() for restaurant in restaurants]
+    return jsonify(serialized_restaurants)
 
-class RestaurantResource(Resource):
-    def get(self, id):
-        restaurant = Restaurant.query.get(id)
-        if restaurant:
-            return jsonify(restaurant.to_dict())
+
+@app.route("/restaurants/<int:id>", methods=["GET"])
+def get_restaurant(id):
+    restaurant = Restaurant.query.filter_by(id=id).one_or_none()
+    if restaurant:
+        return jsonify(restaurant.to_dict(relationships={"restaurant_pizzas": {"pizza": {}}}))
+    else:
         return jsonify({"error": "Restaurant not found"}), 404
 
-    def delete(self, id):
-        restaurant = Restaurant.query.get(id)
-        if restaurant:
-            db.session.delete(restaurant)
-            db.session.commit()
-            return '', 204
+
+@app.route("/restaurants/<int:id>", methods=["DELETE"])
+def delete_restaurant(id):
+    restaurant = Restaurant.query.filter_by(id=id).one_or_none()
+    if restaurant:
+        db.session.delete(restaurant)
+        db.session.commit()
+        return "", 204
+    else:
         return jsonify({"error": "Restaurant not found"}), 404
 
-class PizzasResource(Resource):
-    def get(self):
-        pizzas = Pizza.query.all()
-        return jsonify([pizza.to_dict() for pizza in pizzas])
 
-class RestaurantPizzasResource(Resource):
-    def post(self):
-        data = request.get_json()
-        try:
-            restaurant_pizza = RestaurantPizza(
-                price=data["price"],
-                pizza_id=data["pizza_id"],
-                restaurant_id=data["restaurant_id"]
-            )
-            db.session.add(restaurant_pizza)
-            db.session.commit()
-            return jsonify(restaurant_pizza.to_dict()), 201
-        except ValueError as e:
-            return jsonify({"errors": [str(e)]}), 400
+@app.route("/pizzas", methods=["GET"])
+def get_pizzas():
+    pizzas = Pizza.query.all()
+    serialized_pizzas = [pizza.to_dict() for pizza in pizzas]
+    return jsonify(serialized_pizzas)
 
-api.add_resource(RestaurantsResource, "/restaurants")
-api.add_resource(RestaurantResource, "/restaurants/<int:id>")
-api.add_resource(PizzasResource, "/pizzas")
-api.add_resource(RestaurantPizzasResource, "/restaurant_pizzas")
+
+@app.route("/restaurant_pizzas", methods=["POST"])
+def create_restaurant_pizza():
+    data = request.json
+    try:
+        pizza = Pizza.query.filter_by(id=data["pizza_id"]).one()
+        restaurant = Restaurant.query.filter_by(id=data["restaurant_id"]).one()
+
+        restaurant_pizza = RestaurantPizza(
+            restaurant_id=restaurant.id, pizza_id=pizza.id, price=data["price"]
+        )
+
+        db.session.add(restaurant_pizza)
+        db.session.commit()
+
+        return jsonify(restaurant_pizza.to_dict(
+            relationships={"pizza": {}, "restaurant": {}})), 201
+    except KeyError:
+        return jsonify({"errors": ["Missing required fields"]}), 400
+    except ValueError as e:
+        return jsonify({"errors": ["validation errors"]}), 400
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"errors": ["Integrity error occurred"]}), 400
+    except:
+        return jsonify({"errors": ["Pizza or Restaurant not found"]}), 404
 
 
 if __name__ == "__main__":
-    app.run(port=5555, debug=True)
+    app.run(debug=True)
